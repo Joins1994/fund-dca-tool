@@ -1,0 +1,32 @@
+{
+  "backup_code": "558926",
+  "created_at": "2026-05-19 07:28:36",
+  "records_count": 2,
+  "records": [
+    {
+      "id": 1,
+      "indexCode": "sh000300",
+      "indexName": "沪深300",
+      "amount": 1000,
+      "date": "2024-01-15"
+    },
+    {
+      "id": 2,
+      "indexCode": "sh000905",
+      "indexName": "中证500",
+      "amount": 2000,
+      "date": "2024-02-15"
+    }
+  ],
+  "settings": {
+    "alert": {
+      "peThreshold": 30,
+      "investDay": 1
+    },
+    "stop": {
+      "stopProfit": 15,
+      "stopLoss": -10
+    }
+  },
+  "version": "1.0"
+}
