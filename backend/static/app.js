@@ -160,9 +160,7 @@ const INDEX_CONFIG = {
 };
 
 // 图表实例
-let peChart = null;
 let priceChart = null;
-let scoreChart = null;
 
 // 从后端API获取数据（带超时和重试）
 async function fetchFromAPI(endpoint, options = {}, retryCount = 0) {
@@ -1349,7 +1347,6 @@ function autoSelectStrategy() {
 
 // ============== 历史数据功能 ==============
 
-let peBandChart = null;
 let currentHistoryData = null;
 
 // 加载历史数据图表
@@ -1396,288 +1393,143 @@ async function loadHistoryChart() {
     }
 }
 
-// 渲染历史图表
+// 渲染历史图表（仅价格指数）
 function renderHistoryCharts(data, name) {
+    console.log(`[renderHistoryCharts] 开始渲染图表，数据点数: ${data.length}, 指数名称: ${name}`);
+    
     // 数据采样（如果数据点太多）
     let chartData = data;
     if (data.length > 500) {
         const step = Math.floor(data.length / 500);
         chartData = data.filter((_, index) => index % step === 0);
+        console.log(`[renderHistoryCharts] 数据采样后点数: ${chartData.length}`);
     }
     
     const dates = chartData.map(d => d.date);
     const prices = chartData.map(d => d.close);
-    const pes = chartData.map(d => d.pe);
     
-    // PE估值走势图
-    const peCtx = document.getElementById('peChart');
-    if (peCtx) {
-        if (peChart) peChart.destroy();
-        
-        peChart = new Chart(peCtx, {
-            type: 'line',
-            data: {
-                labels: dates,
-                datasets: [{
-                    label: `${name} PE估值`,
-                    data: pes,
-                    borderColor: '#4f46e5',
-                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: { display: true, text: `${name} PE估值走势（创立以来）` },
-                    legend: { display: true }
-                },
-                scales: {
-                    x: { display: false },
-                    y: { 
-                        beginAtZero: false,
-                        title: { display: true, text: 'PE估值' }
-                    }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                }
-            }
-        });
-    }
-    
-    // 价格指数走势图（默认显示，更突出）
+    // 价格指数走势图
     const priceCtx = document.getElementById('priceChart');
-    if (priceCtx) {
-        if (priceChart) priceChart.destroy();
-        
-        // 计算涨跌幅
-        const startPrice = prices[0];
-        const endPrice = prices[prices.length - 1];
-        const totalReturn = ((endPrice - startPrice) / startPrice * 100).toFixed(2);
-        const isPositive = totalReturn >= 0;
-        
-        // 将日期转换为年份格式用于显示
-        const yearLabels = dates.map(dateStr => {
-            const date = new Date(dateStr);
-            return date.getFullYear() + '年';
-        });
-        
-        // 去重并保留年份标签
-        const uniqueYears = [];
-        let lastYear = '';
-        yearLabels.forEach((year, index) => {
-            if (year !== lastYear) {
-                uniqueYears.push({ year, index });
-                lastYear = year;
-            }
-        });
-        
-        // 生成用于显示的labels（只在年份变化时显示）
-        const displayLabels = dates.map((dateStr, index) => {
-            const date = new Date(dateStr);
-            const year = date.getFullYear();
-            // 只在每年的第一个数据点显示年份
-            if (index === 0 || year !== new Date(dates[index - 1]).getFullYear()) {
-                return year + '年';
-            }
-            return '';
-        });
-        
-        priceChart = new Chart(priceCtx, {
-            type: 'line',
-            data: {
-                labels: dates,
-                datasets: [{
-                    label: `${name} 价格指数`,
-                    data: prices,
-                    borderColor: isPositive ? '#10b981' : '#ef4444',
-                    backgroundColor: isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                    borderWidth: 2.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: { 
-                        display: true, 
-                        text: `${name} 价格指数走势（创立以来） | 累计收益: ${isPositive ? '+' : ''}${totalReturn}%`,
-                        font: { size: 16, weight: 'bold' }
-                    },
-                    legend: { display: false },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false,
-                        callbacks: {
-                            title: function(context) {
-                                const date = new Date(context[0].label);
-                                return date.getFullYear() + '年' + (date.getMonth() + 1) + '月';
-                            },
-                            label: function(context) {
-                                return `指数点位: ${context.parsed.y.toFixed(2)}点`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { 
-                        display: true,
-                        title: {
-                            display: true,
-                            text: '年份',
-                            font: { weight: 'bold', size: 14 }
-                        },
-                        ticks: {
-                            callback: function(val, index) {
-                                // 只显示年份标签
-                                const date = new Date(this.getLabelForValue(val));
-                                const year = date.getFullYear();
-                                // 每2-3年显示一个标签，避免拥挤
-                                if (index === 0) return year + '年';
-                                const prevDate = new Date(dates[index - 1]);
-                                if (year !== prevDate.getFullYear()) {
-                                    return year + '年';
-                                }
-                                return '';
-                            },
-                            maxRotation: 0,
-                            autoSkip: false
-                        }
-                    },
-                    y: { 
-                        beginAtZero: false,
-                        title: { 
-                            display: true, 
-                            text: '指数点数',
-                            font: { weight: 'bold', size: 14 }
-                        },
-                        ticks: {
-                            callback: function(value) {
-                                return value.toFixed(0) + '点';
-                            }
-                        }
-                    }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
-                }
-            }
-        });
+    console.log(`[renderHistoryCharts] 获取canvas元素:`, priceCtx ? '成功' : '失败');
+    if (!priceCtx) {
+        console.error('[renderHistoryCharts] priceChart canvas not found');
+        return;
     }
     
-    // PE估值带图
-    const peBandCtx = document.getElementById('peBandChart');
-    if (peBandCtx) {
-        if (peBandChart) peBandChart.destroy();
-        
-        // 计算PE分位数区间
-        const sortedPE = [...pes].sort((a, b) => a - b);
-        const pe10 = sortedPE[Math.floor(sortedPE.length * 0.1)];
-        const pe30 = sortedPE[Math.floor(sortedPE.length * 0.3)];
-        const pe50 = sortedPE[Math.floor(sortedPE.length * 0.5)];
-        const pe70 = sortedPE[Math.floor(sortedPE.length * 0.7)];
-        const pe90 = sortedPE[Math.floor(sortedPE.length * 0.9)];
-        
-        peBandCtx.height = 400;
-        peBandChart = new Chart(peBandCtx, {
-            type: 'line',
-            data: {
-                labels: dates,
-                datasets: [
-                    {
-                        label: 'PE估值',
-                        data: pes,
-                        borderColor: '#4f46e5',
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.1,
-                        fill: false
-                    },
-                    {
-                        label: '90%分位（高估）',
-                        data: new Array(dates.length).fill(pe90),
-                        borderColor: '#ef4444',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: '70%分位',
-                        data: new Array(dates.length).fill(pe70),
-                        borderColor: '#f59e0b',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: '中位数',
-                        data: new Array(dates.length).fill(pe50),
-                        borderColor: '#6b7280',
-                        borderWidth: 1,
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: '30%分位',
-                        data: new Array(dates.length).fill(pe30),
-                        borderColor: '#10b981',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
-                    },
-                    {
-                        label: '10%分位（低估）',
-                        data: new Array(dates.length).fill(pe10),
-                        borderColor: '#059669',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
-                        pointRadius: 0,
-                        fill: false
+    // 确保canvas有正确的宽高
+    const container = priceCtx.parentElement;
+    if (container) {
+        const rect = container.getBoundingClientRect();
+        console.log(`[renderHistoryCharts] 容器尺寸: width=${rect.width}, height=${rect.height}`);
+        if (rect.width > 0 && rect.height > 0) {
+            priceCtx.width = rect.width;
+            priceCtx.height = rect.height;
+        }
+    }
+    
+    if (priceChart) priceChart.destroy();
+    
+    // 计算涨跌幅
+    const startPrice = prices[0];
+    const endPrice = prices[prices.length - 1];
+    const totalReturn = ((endPrice - startPrice) / startPrice * 100).toFixed(2);
+    const isPositive = totalReturn >= 0;
+    
+    console.log(`[renderHistoryCharts] 创建Chart实例，dates长度: ${dates.length}, prices长度: ${prices.length}`);
+    
+    // 检查Chart.js是否加载
+    if (typeof Chart === 'undefined') {
+        console.error('[renderHistoryCharts] Chart.js 库未加载');
+        return;
+    }
+    
+    priceChart = new Chart(priceCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: `${name} 价格指数`,
+                data: prices,
+                borderColor: isPositive ? '#10b981' : '#ef4444',
+                backgroundColor: isPositive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                borderWidth: 2.5,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: { 
+                    display: true, 
+                    text: `${name} 价格指数走势（创立以来） | 累计收益: ${isPositive ? '+' : ''}${totalReturn}%`,
+                    font: { size: 16, weight: 'bold' }
+                },
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: function(context) {
+                            const date = new Date(context[0].label);
+                            return date.getFullYear() + '年' + (date.getMonth() + 1) + '月';
+                        },
+                        label: function(context) {
+                            return `指数点位: ${context.parsed.y.toFixed(2)}点`;
+                        }
                     }
-                ]
+                }
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
+            scales: {
+                x: { 
+                    display: true,
+                    title: {
+                        display: true,
+                        text: '年份',
+                        font: { weight: 'bold', size: 14 }
+                    },
+                    ticks: {
+                        callback: function(val, index) {
+                            // 只显示年份标签
+                            const date = new Date(this.getLabelForValue(val));
+                            const year = date.getFullYear();
+                            // 每2-3年显示一个标签，避免拥挤
+                            if (index === 0) return year + '年';
+                            const prevDate = new Date(dates[index - 1]);
+                            if (year !== prevDate.getFullYear()) {
+                                return year + '年';
+                            }
+                            return '';
+                        },
+                        maxRotation: 0,
+                        autoSkip: false
+                    }
+                },
+                y: { 
+                    beginAtZero: false,
                     title: { 
                         display: true, 
-                        text: `${name} PE估值带（创立以来）` 
+                        text: '指数点数',
+                        font: { weight: 'bold', size: 14 }
                     },
-                    legend: { 
-                        display: true,
-                        position: 'bottom'
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(0) + '点';
+                        }
                     }
-                },
-                scales: {
-                    x: { display: false },
-                    y: { 
-                        beginAtZero: false,
-                        title: { display: true, text: 'PE估值' }
-                    }
-                },
-                interaction: {
-                    intersect: false,
-                    mode: 'index'
                 }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
             }
-        });
-    }
+        }
+    });
+    
+    console.log('[renderHistoryCharts] Chart实例创建成功');
 }
 
 // 加载历史数据摘要
