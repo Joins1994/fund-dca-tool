@@ -1,14 +1,13 @@
 /**
  * 指数基金定投助手 - 主程序
- * 支持本地和后端API两种数据源模式
+ * 支持后端API数据源
  */
 
 // API配置
 // 使用相对路径，前端和后端部署在同一服务上
 const API_BASE_URL = '';  // 空字符串表示使用相对路径
-const USE_API = true;  // 设为false则使用本地模拟数据
-const API_TIMEOUT = 15000;  // API请求超时时间（毫秒）- 增加到15秒
-const MAX_RETRIES = 3;  // 最大重试次数 - 增加到3次
+const API_TIMEOUT = 15000;  // API请求超时时间（毫秒）
+const MAX_RETRIES = 3;  // 最大重试次数
 const RETRY_DELAY = 1500;  // 重试间隔（毫秒）
 
 console.log('[API配置] 使用相对路径模式');
@@ -227,108 +226,17 @@ async function fetchFromAPI(endpoint, options = {}, retryCount = 0) {
     }
 }
 
-// 显示数据源指示器
-function showDataSourceIndicator(source) {
-    const updateTimeEl = document.getElementById('updateTime');
-    if (updateTimeEl) {
-        const existingIndicator = updateTimeEl.querySelector('.data-source-indicator');
-        if (existingIndicator) {
-            existingIndicator.remove();
-        }
-        
-        if (source === 'local') {
-            const indicator = document.createElement('span');
-            indicator.className = 'data-source-indicator';
-            indicator.style.cssText = 'margin-left: 8px; font-size: 0.8rem; color: #f59e0b; font-weight: 500;';
-            indicator.textContent = '(本地数据)';
-            indicator.title = 'API连接失败，使用本地模拟数据';
-            updateTimeEl.appendChild(indicator);
-        }
-    }
-}
-
-// 获取实时行情（优先后端API）
+// 获取实时行情
 async function fetchQuotes() {
-    if (USE_API) {
-        const result = await fetchFromAPI('/api/quotes');
-        if (result && result.success) {
-            return {
-                success: true,
-                data: result.data,
-                timestamp: result.timestamp
-            };
-        }
+    const result = await fetchFromAPI('/api/quotes');
+    if (result && result.success) {
+        return {
+            success: true,
+            data: result.data,
+            timestamp: result.timestamp
+        };
     }
-    
-    // API失败，返回null让调用方处理
     return null;
-}
-
-// 本地模拟数据
-function getLocalData() {
-    const mockData = {
-        'sh000300': { name: '沪深300', price: 4469.22, change: 25.3, changePercent: 0.57 },
-        'sh000016': { name: '上证50', price: 2890.15, change: 15.2, changePercent: 0.53 },
-        'sh000905': { name: '中证500', price: 6951.80, change: 45.6, changePercent: 0.66 },
-        'sh000688': { name: '科创50', price: 1085.32, change: -12.5, changePercent: -1.14 },
-        'sz399006': { name: '创业板指', price: 2156.78, change: 18.3, changePercent: 0.85 },
-        'sh000852': { name: '中证1000', price: 7856.42, change: 52.1, changePercent: 0.67 }
-    };
-    
-    const result = [];
-    for (const code in mockData) {
-        const item = mockData[code];
-        const peInfo = getLocalPEInfo(code);
-        result.push({
-            code,
-            name: item.name,
-            type: INDEX_CONFIG[code].type,
-            risk: INDEX_CONFIG[code].risk,
-            price: item.price,
-            change: item.change,
-            changePercent: item.changePercent,
-            pe: peInfo.current,
-            peMin: peInfo.min,
-            peMax: peInfo.max,
-            pePercentile: peInfo.percentile
-        });
-    }
-    
-    return {
-        success: true,
-        data: result,
-        timestamp: new Date().toLocaleString('zh-CN')
-    };
-}
-
-// 本地PE数据
-function getLocalPEInfo(code) {
-    const peData = {
-        'sh000300': { current: 14.18, min: 10, max: 18 },
-        'sh000016': { current: 11.5, min: 8, max: 15 },
-        'sh000905': { current: 22.5, min: 15, max: 35 },
-        'sh000688': { current: 65, min: 35, max: 85 },
-        'sz399006': { current: 28, min: 25, max: 60 },
-        'sh000852': { current: 32, min: 20, max: 50 }
-    };
-    
-    const info = peData[code] || { current: 20, min: 10, max: 30 };
-    const range = info.max - info.min;
-    const position = info.current - info.min;
-    const percentile = Math.round((position / range) * 100);
-    
-    return {
-        current: info.current,
-        min: info.min,
-        max: info.max,
-        percentile: percentile
-    };
-}
-
-// 计算PE百分位
-function calculatePEPercentile(code) {
-    const peInfo = getLocalPEInfo(code);
-    return peInfo.percentile;
 }
 
 // 计算综合评分
@@ -456,7 +364,6 @@ function renderIndexCards(data) {
                     <small style="color: var(--text-light);">${config.type} · 风险${config.risk}</small>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    ${item.source === 'simulated' ? '<span style="font-size: 0.7rem; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px;">模拟</span>' : '<span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px;">实时</span>'}
                     <span class="badge ${recommendation.badge}">${recommendation.badgeText}</span>
                 </div>
             </div>
@@ -603,47 +510,6 @@ function renderOperationAdvice(data) {
     `;
     
     container.innerHTML = html;
-}
-
-// 生成历史数据
-function generateHistoryData(data) {
-    const days = 30;
-    const dates = [];
-    const peData = {};
-    const priceData = {};
-    const scoreData = {};
-    
-    const today = new Date();
-    
-    data.forEach(item => {
-        peData[item.code] = [];
-        priceData[item.code] = [];
-        scoreData[item.code] = [];
-    });
-    
-    for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        dates.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
-        
-        data.forEach(item => {
-            const randomFactor = 0.98 + Math.random() * 0.04;
-            const basePE = item.pe || 20;
-            const basePrice = item.price;
-            
-            peData[item.code].push((basePE * randomFactor).toFixed(2));
-            priceData[item.code].push((basePrice * randomFactor).toFixed(2));
-            
-            const pePercentile = item.pePercentile || calculatePEPercentile(item.code);
-            const score = calculateScore({
-                ...item,
-                changePercent: (randomFactor - 1) * 100
-            });
-            scoreData[item.code].push(score);
-        });
-    }
-    
-    return { dates, peData, priceData, scoreData };
 }
 
 // 获取颜色
@@ -1357,9 +1223,7 @@ async function initData() {
                     'sina': '新浪财经',
                     'qq': '腾讯财经',
                     'sina_int': '新浪国际',
-                    'simulated': '模拟数据',
-                    'mixed': '新浪+腾讯',
-                    'mock': '模拟数据'
+                    'mixed': '新浪+腾讯'
                 };
                 const sourceName = sourceMap[result.source] || result.source || '后端API';
                 dataSourceEl.textContent = sourceName;
@@ -1410,9 +1274,7 @@ async function refreshAllData() {
     
     try {
         // 清除缓存并重新获取
-        if (USE_API) {
-            await fetchFromAPI('/api/quotes?_=' + Date.now());
-        }
+        await fetchFromAPI('/api/quotes?_=' + Date.now());
         
         // 重新初始化数据
         await initData();
@@ -1502,9 +1364,8 @@ async function loadHistoryChart() {
         infoEl.style.color = '#4f46e5';
     }
     
-    // 先尝试从API获取
-    if (USE_API) {
-        try {
+    // 从API获取
+    try {
             console.log(`[loadHistoryChart] 调用API: ${API_BASE_URL}/api/history/${code}`);
             const result = await fetchFromAPI(`/api/history/${code}`);
             console.log(`[loadHistoryChart] API返回:`, result ? `success=${result.success}, days=${result.totalDays}` : 'null');
@@ -1525,60 +1386,14 @@ async function loadHistoryChart() {
         } catch (e) {
             console.error('[loadHistoryChart] API调用失败:', e.message);
         }
-    }
     
-    // API失败，使用本地数据
-    console.log('[loadHistoryChart] 切换到本地模拟数据');
+    // API失败，显示提示
+    console.log('[loadHistoryChart] API获取历史数据失败');
     
     if (infoEl) {
-        infoEl.textContent = '⚠️ 使用本地模拟数据（API连接失败）';
-        infoEl.style.color = '#f59e0b';
+        infoEl.textContent = '⚠️ 未获取到历史数据';
+        infoEl.style.color = '#ef4444';
     }
-    
-    // 使用本地模拟数据
-    const mockData = generateLocalHistoryData(code);
-    renderHistoryCharts(mockData, INDEX_CONFIG[code].name);
-}
-
-// 生成本地模拟历史数据
-function generateLocalHistoryData(code) {
-    const startDate = new Date('2010-01-01');
-    const endDate = new Date();
-    const data = [];
-    
-    const basePrices = {
-        'sh000300': 3500, 'sh000016': 2500, 'sh000905': 6000,
-        'sh000688': 1000, 'sz399006': 2000, 'sh000852': 7000
-    };
-    
-    const basePE = {
-        'sh000300': 13.5, 'sh000016': 11, 'sh000905': 25,
-        'sh000688': 60, 'sz399006': 42, 'sh000852': 35
-    };
-    
-    let current = new Date(startDate);
-    let price = basePrices[code] || 3000;
-    
-    while (current <= endDate) {
-        if (current.getDay() !== 0 && current.getDay() !== 6) {
-            // 模拟价格波动
-            const change = (Math.random() - 0.48) * 0.02;
-            price = price * (1 + change);
-            
-            // 模拟PE波动
-            const pe = basePE[code] * (1 + (Math.random() - 0.5) * 0.3);
-            
-            data.push({
-                date: current.toISOString().split('T')[0],
-                close: price,
-                pe: pe,
-                pePercentile: Math.random() * 100
-            });
-        }
-        current.setDate(current.getDate() + 1);
-    }
-    
-    return data;
 }
 
 // 渲染历史图表

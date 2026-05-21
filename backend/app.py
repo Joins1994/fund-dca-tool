@@ -322,42 +322,6 @@ def fetch_sina_quotes():
         except Exception as e:
             print(f"  新浪国际获取 {index_code} 失败: {e}")
     
-    # 补充未获取到的指数（使用模拟数据）
-    fetched_codes = [d['code'] for d in data]
-    for code in ['IXIC', 'SPX', 'FTSE', 'DAX', 'N225', 'HSI']:
-        if code not in fetched_codes:
-            info = INDEX_LIST.get(code, {})
-            pe_info = PE_HISTORY.get(code, {})
-            base_prices = {'IXIC': 26000, 'SPX': 7400, 'FTSE': 9200, 'DAX': 19500, 'N225': 40000, 'HSI': 20000}
-            base_price = base_prices.get(code, 5000)
-            change = random.uniform(-2, 2)
-            
-            item = {
-                'code': code,
-                'name': info.get('name', code),
-                'type': info.get('type', '综合'),
-                'risk': info.get('risk', '中'),
-                'region': info.get('region', '海外'),
-                'currency': info.get('currency', 'USD'),
-                'price': round(base_price * (1 + change/100), 2),
-                'change': round(base_price * change/100, 2),
-                'changePercent': round(change, 2),
-                'pe': pe_info.get('current', 20),
-                'peMin': pe_info.get('min', 10),
-                'peMax': pe_info.get('max', 30),
-                'source': 'simulated'
-            }
-            
-            if pe_info:
-                range_val = pe_info['max'] - pe_info['min']
-                position = pe_info['current'] - pe_info['min']
-                item['pePercentile'] = round((position / range_val) * 100) if range_val > 0 else 50
-            else:
-                item['pePercentile'] = 50
-            
-            data.append(item)
-            print(f"  ⚠️ 模拟数据 {item['name']}: {item['price']}")
-    
     result = {
         'success': True,
         'data': data,
@@ -367,36 +331,6 @@ def fetch_sina_quotes():
     
     set_cache('quotes', result)
     return result
-
-
-def get_mock_data():
-    """获取模拟数据（当API失败时）"""
-    data = []
-    for code, info in INDEX_LIST.items():
-        pe_info = PE_HISTORY.get(code, {})
-        
-        # 添加随机波动
-        base_price = random.uniform(2000, 8000)
-        change = random.uniform(-50, 50)
-        
-        item = {
-            'code': code,
-            'name': info['name'],
-            'type': info['type'],
-            'risk': info['risk'],
-            'price': round(base_price, 2),
-            'change': round(change, 2),
-            'changePercent': round((change / base_price) * 100, 2),
-            'volume': random.randint(100000000, 500000000),
-            'amount': random.randint(1000000000, 5000000000),
-            'pe': pe_info.get('current', 0),
-            'peMin': pe_info.get('min', 0),
-            'peMax': pe_info.get('max', 0),
-            'pePercentile': calculate_pe_percentile(code)
-        }
-        data.append(item)
-    
-    return data
 
 
 def calculate_pe_percentile(code):
