@@ -208,16 +208,19 @@ def fetch_sina_quotes():
                         'source': 'sina'
                     }
                     
-                    # 添加PE和分位数据
+                    # 添加PE和分位数据（使用真实PE数据）
+                    real_pe = get_real_time_pe(code)
                     pe_info = PE_HISTORY.get(code, {})
-                    item['pe'] = pe_info.get('current', 0)
-                    item['peMin'] = pe_info.get('min', 0)
-                    item['peMax'] = pe_info.get('max', 0)
+                    item['pe'] = real_pe if real_pe else pe_info.get('avg', 20)
+                    item['peMin'] = pe_info.get('min', 10)
+                    item['peMax'] = pe_info.get('max', 30)
                     
                     if pe_info:
-                        range_val = pe_info['max'] - pe_info['min']
-                        position = pe_info['current'] - pe_info['min']
-                        item['pePercentile'] = round((position / range_val) * 100) if range_val > 0 else 50
+                        min_pe = pe_info.get('min', 10) * 0.8
+                        max_pe = pe_info.get('max', 30) * 1.2
+                        range_val = max_pe - min_pe
+                        position = real_pe - min_pe if real_pe else (pe_info.get('avg', 20) - min_pe)
+                        item['pePercentile'] = max(0, min(100, round((position / range_val) * 100))) if range_val > 0 else 50
                     else:
                         item['pePercentile'] = 50
                     
