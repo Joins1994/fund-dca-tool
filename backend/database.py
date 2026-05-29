@@ -4,12 +4,15 @@
 """
 
 import sqlite3
-import os
 import json
 from datetime import datetime
+from pathlib import Path
+from config import Config
+from logger import get_logger
 
 # 数据库文件路径
-DB_PATH = os.path.join(os.path.dirname(__file__), 'fund_dca.db')
+DB_PATH = str(Config.DB_PATH)
+logger = get_logger("database")
 
 def get_connection():
     """获取数据库连接"""
@@ -83,7 +86,7 @@ def init_database():
     
     conn.commit()
     conn.close()
-    print("✅ 数据库初始化完成")
+    logger.info("数据库初始化完成")
 
 # ========== 定投记录操作 ==========
 

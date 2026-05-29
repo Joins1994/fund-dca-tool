@@ -30,6 +30,15 @@ wheels/
 
 # Backups
 backups/
+backend/backups/
+
+# Cache
+cache/
+backend/cache/
+
+# Logs
+logs/
+backend/logs/
 
 # IDE
 .vscode/
@@ -44,3 +53,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Environment
+.env
+.env.local

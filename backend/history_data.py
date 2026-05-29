@@ -9,6 +9,12 @@ import requests
 import json
 import pandas as pd
 from datetime import datetime, timedelta
+from logger import get_logger
+from cache import get_cache, set_cache
+from config import Config
+
+# 初始化日志
+logger = get_logger("history_data")
 
 # 指数创立日期
 INDEX_START_DATES = {
@@ -17,7 +23,15 @@ INDEX_START_DATES = {
     'sh000905': '2007-01-15',  # 中证500
     'sh000688': '2020-01-23',  # 科创50
     'sz399006': '2010-06-01',  # 创业板指
-    'sh000852': '2014-10-17'   # 中证1000
+    'sh000852': '2014-10-17',   # 中证1000
+    'sh000001': '1990-12-19',  # 上证指数
+    'sz399001': '1995-01-23',  # 深证成指
+    'IXIC': '1971-02-05',      # 纳斯达克100
+    'SPX': '1950-01-03',       # 标普500
+    'FTSE': '1984-01-03',      # 英国富时100
+    'DAX': '1988-01-04',       # 德国DAX
+    'N225': '1949-05-16',      # 日经225
+    'HSI': '1967-08-31'        # 恒生指数
 }
 
 # 指数名称映射
@@ -27,7 +41,15 @@ INDEX_NAMES = {
     'sh000905': '中证500',
     'sh000688': '科创50',
     'sz399006': '创业板指',
-    'sh000852': '中证1000'
+    'sh000852': '中证1000',
+    'sh000001': '上证指数',
+    'sz399001': '深证成指',
+    'IXIC': '纳斯达克100',
+    'SPX': '标普500',
+    'FTSE': '英国富时100',
+    'DAX': '德国DAX',
+    'N225': '日经225',
+    'HSI': '恒生指数'
 }
 
 
@@ -116,7 +138,7 @@ def fetch_index_history_from_sina(symbol, start_date=None, end_date=None):
         return None
         
     except Exception as e:
-        print(f"获取历史数据失败 {symbol}: {e}")
+        logger.error(f"获取新浪历史数据失败 {symbol}: {e}")
         return None
 
 
@@ -193,7 +215,7 @@ def fetch_index_history_from_eastmoney(symbol, start_date=None, end_date=None):
         return None
         
     except Exception as e:
-        print(f"东方财富数据获取失败 {symbol}: {e}")
+        logger.error(f"获取东方财富历史数据失败 {symbol}: {e}")
         return None
 
 
@@ -261,37 +283,57 @@ def generate_mock_history(symbol, days=3650):
     return pd.DataFrame(data)
 
 
-def get_index_history(symbol, use_mock=False):
+def get_index_history(symbol, use_mock=False, use_cache=True):
     """
     获取指数历史数据的主函数
     
     参数:
         symbol: 指数代码
         use_mock: 是否使用模拟数据
+        use_cache: 是否使用缓存
     
     返回:
         DataFrame 或 None
     """
+    cache_key = f"history_{symbol}"
+    
+    # 尝试从缓存获取
+    if use_cache:
+        cached_df = get_cache(cache_key, prefix="history")
+        if cached_df is not None:
+            logger.debug(f"从缓存获取 {symbol} 历史数据")
+            return cached_df
+    
     if use_mock:
-        return generate_mock_history(symbol)
+        df = generate_mock_history(symbol)
+        if use_cache and df is not None:
+            set_cache(cache_key, df, ttl=Config.CACHE_TTL, prefix="history")
+        return df
     
     # 先尝试东方财富（数据更完整）
     df = fetch_index_history_from_eastmoney(symbol)
     
     if df is not None and len(df) > 0:
-        print(f"成功从东方财富获取 {symbol} 历史数据，共 {len(df)} 条")
+        logger.info(f"成功从东方财富获取 {symbol} 历史数据，共 {len(df)} 条")
+        if use_cache:
+            set_cache(cache_key, df, ttl=Config.CACHE_TTL, prefix="history")
         return df
     
     # 备用：新浪
     df = fetch_index_history_from_sina(symbol)
     
     if df is not None and len(df) > 0:
-        print(f"成功从新浪获取 {symbol} 历史数据，共 {len(df)} 条")
+        logger.info(f"成功从新浪获取 {symbol} 历史数据，共 {len(df)} 条")
+        if use_cache:
+            set_cache(cache_key, df, ttl=Config.CACHE_TTL, prefix="history")
         return df
     
     # 如果都失败，使用模拟数据
-    print(f"使用模拟数据 {symbol}")
-    return generate_mock_history(symbol)
+    logger.warning(f"API 获取失败，使用模拟数据 {symbol}")
+    df = generate_mock_history(symbol)
+    if use_cache and df is not None:
+        set_cache(cache_key, df, ttl=Config.CACHE_TTL, prefix="history")
+    return df
 
 
 def get_all_indices_history():

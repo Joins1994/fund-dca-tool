@@ -5,7 +5,6 @@
 提供实时行情、历史估值、综合评分等功能
 """
 
-import os
 import json
 import time
 import random
@@ -16,6 +15,9 @@ from flask import Flask, jsonify, request, render_template, send_from_directory
 from flask_cors import CORS
 import requests
 
+from config import Config
+from logger import get_logger
+from cache import get_cache, set_cache
 from history_data import get_index_history, calculate_pe_from_price, INDEX_NAMES, INDEX_START_DATES
 from database import (
     init_database, add_record, get_records, delete_record, get_stats,
@@ -23,7 +25,8 @@ from database import (
     save_stop_settings, get_stop_settings, get_all_stop_settings
 )
 
-# 初始化数据库
+# 初始化
+logger = get_logger("app")
 init_database()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -31,7 +34,6 @@ CORS(app)
 
 # 配置 - 包含A股和海外主要指数
 INDEX_LIST = {
-    # A股指数
     'sh000300': {'name': '沪深300', 'type': '宽基', 'risk': '中', 'region': 'A股'},
     'sh000016': {'name': '上证50', 'type': '宽基', 'risk': '低', 'region': 'A股'},
     'sh000905': {'name': '中证500', 'type': '宽基', 'risk': '中高', 'region': 'A股'},
@@ -40,7 +42,7 @@ INDEX_LIST = {
     'sh000852': {'name': '中证1000', 'type': '小盘', 'risk': '高', 'region': 'A股'},
     'sh000001': {'name': '上证指数', 'type': '综合', 'risk': '中', 'region': 'A股'},
     'sz399001': {'name': '深证成指', 'type': '综合', 'risk': '中', 'region': 'A股'},
-    # 海外指数（模拟数据）
+    # 海外指数
     'IXIC': {'name': '纳斯达克100', 'type': '科技', 'risk': '高', 'region': '美股', 'currency': 'USD'},
     'SPX': {'name': '标普500', 'type': '综合', 'risk': '中', 'region': '美股', 'currency': 'USD'},
     'FTSE': {'name': '英国富时100', 'type': '综合', 'risk': '中', 'region': '欧洲', 'currency': 'GBP'},
@@ -59,7 +61,7 @@ PE_HISTORY = {
     'sh000852': {'current': 32, 'min': 20, 'max': 50, 'avg': 35},
     'sh000001': {'current': 13.5, 'min': 10, 'max': 20, 'avg': 14},
     'sz399001': {'current': 25, 'min': 18, 'max': 40, 'avg': 25},
-    # 海外指数PE范围（模拟）
+    # 海外指数PE范围
     'IXIC': {'current': 35, 'min': 20, 'max': 50, 'avg': 30},
     'SPX': {'current': 22, 'min': 15, 'max': 30, 'avg': 20},
     'FTSE': {'current': 15, 'min': 10, 'max': 22, 'avg': 14},
@@ -68,32 +70,24 @@ PE_HISTORY = {
     'HSI': {'current': 12, 'min': 8, 'max': 18, 'avg': 12}
 }
 
-# 缓存
-cache = {
-    'quotes': {'data': None, 'time': 0},
-    'history': {}
-}
 
-CACHE_TIME = 60  # 缓存时间（秒）
-
-
-def get_cache(key):
-    """获取缓存"""
-    if key in cache and cache[key]['data']:
-        if time.time() - cache[key]['time'] < CACHE_TIME:
-            return cache[key]['data']
-    return None
+# 使用新的缓存模块
+# 为了兼容旧代码，保留同名函数包装
+def get_cache_compat(key):
+    """获取缓存（兼容旧代码）"""
+    return get_cache(key, prefix="quotes")
 
 
-def set_cache(key, data):
-    """设置缓存"""
-    cache[key] = {'data': data, 'time': time.time()}
+def set_cache_compat(key, data):
+    """设置缓存（兼容旧代码）"""
+    return set_cache(key, data, ttl=Config.QUOTES_CACHE_TTL, prefix="quotes")
 
 
 def fetch_sina_quotes():
     """从新浪获取实时行情（A股）+ 海外指数模拟数据"""
-    cached = get_cache('quotes')
+    cached = get_cache_compat('quotes')
     if cached:
+        logger.debug("使用缓存的行情数据")
         return cached
     
     data = []
@@ -258,13 +252,13 @@ def fetch_sina_quotes():
                         item['pePercentile'] = 50
                     
                     data.append(item)
-                    print(f"  ✅ 腾讯获取 {item['name']}: {item['price']} ({change_pct}%)")
+                    logger.debug(f"腾讯获取 {item['name']}: {item['price']} ({change_pct}%)")
                     
                 except Exception as e:
-                    print(f"  解析腾讯数据失败: {e}")
+                    logger.warning(f"解析腾讯数据失败: {e}")
                     continue
-        except Exception as e:
-            print(f"腾讯财经请求失败: {e}")
+            except Exception as e:
+                logger.error(f"腾讯财经请求失败: {e}")
     
     # 新浪国际数据源（富时100、日经225）
     sina_int_codes = [(k, v['sina_code']) for k, v in global_data_sources.items() 
@@ -317,10 +311,10 @@ def fetch_sina_quotes():
                         item['pePercentile'] = 50
                     
                     data.append(item)
-                    print(f"  ✅ 新浪获取 {item['name']}: {item['price']} ({change_pct}%)")
+                    logger.debug(f"新浪获取 {item['name']}: {item['price']} ({change_pct}%)")
                     
-        except Exception as e:
-            print(f"  新浪国际获取 {index_code} 失败: {e}")
+            except Exception as e:
+                logger.warning(f"新浪国际获取 {index_code} 失败: {e}")
     
     result = {
         'success': True,
@@ -329,7 +323,8 @@ def fetch_sina_quotes():
         'source': 'mixed'
     }
     
-    set_cache('quotes', result)
+    set_cache_compat('quotes', result)
+    logger.info(f"成功获取 {len(data)} 个指数的行情数据")
     return result
 
 
@@ -861,14 +856,34 @@ def check_alerts():
         return jsonify({'success': False, 'error': str(e)})
 
 
-# ============== 云端备份API ==============
+# ========== 全局错误处理 ==========
+
+@app.errorhandler(404)
+def not_found(error):
+    logger.warning(f"404 错误: {request.path}")
+    return jsonify({'success': False, 'error': '资源不存在'}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"500 错误: {error}")
+    return jsonify({'success': False, 'error': '服务器内部错误'}), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    logger.exception(f"未捕获的异常: {error}")
+    return jsonify({'success': False, 'error': '服务器错误'}), 500
+
+
+# ========== 云端备份API ==========
 
 import hashlib
-import os
+from pathlib import Path
 
 # 云端备份存储目录
-BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'backups')
-os.makedirs(BACKUP_DIR, exist_ok=True)
+BACKUP_DIR = Config.BACKUP_DIR
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 def generate_backup_code():
     """生成唯一的备份码"""
@@ -904,7 +919,7 @@ def create_backup():
         }
         
         # 保存到文件
-        backup_file = os.path.join(BACKUP_DIR, f'{backup_code}.json')
+        backup_file = BACKUP_DIR / f'{backup_code}.json'
         with open(backup_file, 'w', encoding='utf-8') as f:
             json.dump(backup_data, f, ensure_ascii=False, indent=2)
         
@@ -923,9 +938,9 @@ def create_backup():
 def get_backup(code):
     """获取云端备份"""
     try:
-        backup_file = os.path.join(BACKUP_DIR, f'{code.upper()}.json')
+        backup_file = BACKUP_DIR / f'{code.upper()}.json'
         
-        if not os.path.exists(backup_file):
+        if not backup_file.exists():
             return jsonify({'success': False, 'error': '备份码不存在或已过期'})
         
         with open(backup_file, 'r', encoding='utf-8') as f:
@@ -948,12 +963,12 @@ def get_backup(code):
 def delete_backup(code):
     """删除云端备份"""
     try:
-        backup_file = os.path.join(BACKUP_DIR, f'{code.upper()}.json')
+        backup_file = BACKUP_DIR / f'{code.upper()}.json'
         
-        if not os.path.exists(backup_file):
+        if not backup_file.exists():
             return jsonify({'success': False, 'error': '备份码不存在'})
         
-        os.remove(backup_file)
+        backup_file.unlink(missing_ok=True)
         
         return jsonify({
             'success': True,
@@ -969,16 +984,14 @@ def list_backups():
     """列出所有备份（用于管理）"""
     try:
         backups = []
-        for filename in os.listdir(BACKUP_DIR):
-            if filename.endswith('.json'):
-                filepath = os.path.join(BACKUP_DIR, filename)
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    backups.append({
-                        'backup_code': data['backup_code'],
-                        'created_at': data['created_at'],
-                        'records_count': data['records_count']
-                    })
+        for backup_file in BACKUP_DIR.glob('*.json'):
+            with open(backup_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                backups.append({
+                    'backup_code': data['backup_code'],
+                    'created_at': data['created_at'],
+                    'records_count': data['records_count']
+                })
         
         # 按时间倒序
         backups.sort(key=lambda x: x['created_at'], reverse=True)
@@ -996,11 +1009,11 @@ def list_backups():
 # ============== 启动服务 ==============
 
 if __name__ == '__main__':
-    print("=" * 50)
-    print("📈 指数基金定投助手 - 后端API服务")
-    print("=" * 50)
-    print("🌐 访问地址: http://localhost:5000")
-    print("📚 API文档: http://localhost:5000/")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("📈 指数基金定投助手 - 后端API服务")
+    logger.info("=" * 50)
+    logger.info(f"🌐 访问地址: http://{Config.HOST}:{Config.PORT}")
+    logger.info(f"📚 API文档: http://{Config.HOST}:{Config.PORT}/")
+    logger.info("=" * 50)
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host=Config.HOST, port=Config.PORT, debug=Config.FLASK_DEBUG)
