@@ -684,28 +684,31 @@ def get_all_index_pe():
         dict: {指数代码: {'pe': float, 'pe_ttm': float, 'date': str, ...}}
     """
     # 指数映射：AKShare名称 -> (内部代码, 中证代码)
+    # 注意：创业板指(399006)没有直接PE数据，用创业板50(399673)代替
     INDEX_PE_MAP = {
         'sh000300': ('沪深300', '000300'),   # 沪深300
         'sh000016': ('上证50', '000016'),    # 上证50
         'sh000905': ('中证500', '000905'),    # 中证500
         'sh000688': ('科创50', '000688'),    # 科创50
-        'sz399006': ('创业板指', '399673'),  # 创业板（尝试用代码）
+        'sz399006': ('创业板50', None),       # 创业板指 -> 用创业板50代替
         'sh000852': ('中证1000', '000852'),   # 中证1000
     }
     
     result = {}
     
     for code, (ak_name, cs_code) in INDEX_PE_MAP.items():
-        # 先尝试AKShare主接口
+        pe_data = None
+        
+        # 优先使用AKShare主接口
         pe_data = get_index_pe_from_akshare(ak_name)
         
-        if pe_data is None or pe_data.get('pe_ttm') is None:
-            # 备用：尝试中证指数接口
+        # 如果AKShare失败，尝试中证指数接口
+        if (pe_data is None or pe_data.get('pe_ttm') is None) and cs_code:
             pe_data = get_index_pe_from_csindex(cs_code)
             if pe_data:
                 pe_data['name'] = ak_name
         
-        if pe_data:
+        if pe_data and pe_data.get('pe_ttm'):
             result[code] = pe_data
             print(f"✅ {code}: PE={pe_data.get('pe_ttm', 'N/A')}, 日期={pe_data.get('date', 'N/A')}")
         else:
