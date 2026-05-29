@@ -608,3 +608,125 @@ if __name__ == '__main__':
         print(df.head())
         print("\n后5条数据:")
         print(df.tail())
+
+
+# ============================================
+# PE估值数据获取 (使用AKShare)
+# ============================================
+
+def get_index_pe_from_akshare(index_name):
+    """
+    从AKShare获取指数实时PE数据
+    
+    参数:
+        index_name: 指数名称，如 '沪深300', '上证50', '中证500'
+    
+    返回:
+        dict: {'pe_ttm': float, 'pe_static': float, 'date': str, 'name': str}
+              失败返回 None
+    """
+    try:
+        import akshare as ak
+        
+        # 主要接口：stock_index_pe_lg (乐咕乐股)
+        df = ak.stock_index_pe_lg(symbol=index_name)
+        if df is not None and len(df) > 0:
+            latest = df.iloc[-1]
+            return {
+                'pe_ttm': float(latest['滚动市盈率']) if pd.notna(latest['滚动市盈率']) else None,
+                'pe_static': float(latest['静态市盈率']) if pd.notna(latest['静态市盈率']) else None,
+                'date': str(latest['日期']),
+                'name': index_name
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"AKShare PE获取失败 {index_name}: {e}")
+        return None
+
+
+def get_index_pe_from_csindex(index_code):
+    """
+    从中证指数获取PE数据（用于AKShare不支持的指数）
+    
+    参数:
+        index_code: 指数代码，如 '000688' (科创50), '000300' (沪深300)
+    
+    返回:
+        dict: {'pe': float, 'date': str}
+    """
+    try:
+        import akshare as ak
+        
+        df = ak.stock_zh_index_value_csindex(symbol=index_code)
+        if df is not None and len(df) > 0:
+            latest = df.iloc[-1]
+            return {
+                'pe_ttm': float(latest['市盈率2']) if pd.notna(latest['市盈率2']) else None,
+                'pe_static': float(latest['市盈率1']) if pd.notna(latest['市盈率1']) else None,
+                'date': str(latest['日期']),
+                'dividend': float(latest['股息率1']) if pd.notna(latest['股息率1']) else None
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"中证指数PE获取失败 {index_code}: {e}")
+        return None
+
+
+def get_all_index_pe():
+    """
+    获取所有A股指数的实时PE数据
+    
+    返回:
+        dict: {指数代码: {'pe': float, 'pe_ttm': float, 'date': str, ...}}
+    """
+    # 指数映射：AKShare名称 -> (内部代码, 中证代码)
+    INDEX_PE_MAP = {
+        'sh000300': ('沪深300', '000300'),   # 沪深300
+        'sh000016': ('上证50', '000016'),    # 上证50
+        'sh000905': ('中证500', '000905'),    # 中证500
+        'sh000688': ('科创50', '000688'),    # 科创50
+        'sz399006': ('创业板指', '399673'),  # 创业板（尝试用代码）
+        'sh000852': ('中证1000', '000852'),   # 中证1000
+    }
+    
+    result = {}
+    
+    for code, (ak_name, cs_code) in INDEX_PE_MAP.items():
+        # 先尝试AKShare主接口
+        pe_data = get_index_pe_from_akshare(ak_name)
+        
+        if pe_data is None or pe_data.get('pe_ttm') is None:
+            # 备用：尝试中证指数接口
+            pe_data = get_index_pe_from_csindex(cs_code)
+            if pe_data:
+                pe_data['name'] = ak_name
+        
+        if pe_data:
+            result[code] = pe_data
+            print(f"✅ {code}: PE={pe_data.get('pe_ttm', 'N/A')}, 日期={pe_data.get('date', 'N/A')}")
+        else:
+            print(f"❌ {code}: 获取失败")
+    
+    return result
+
+
+if __name__ == '__main__':
+    # 测试PE获取
+    print("=== 测试PE数据获取 ===\n")
+    
+    # 测试单个指数
+    print("1. 测试沪深300:")
+    result = get_index_pe_from_akshare('沪深300')
+    if result:
+        print(f"   PE-TTM: {result['pe_ttm']}")
+        print(f"   PE静态: {result['pe_static']}")
+        print(f"   日期: {result['date']}")
+    
+    print("\n2. 获取所有指数PE:")
+    all_pe = get_all_index_pe()
+    print(f"\n成功获取 {len(all_pe)} 个指数的PE数据")
+

@@ -49,24 +49,93 @@ INDEX_LIST = {
     'HSI': {'name': '恒生指数', 'type': '综合', 'risk': '中高', 'region': '港股', 'currency': 'HKD'}
 }
 
-# PE估值历史范围
+# PE估值历史范围（用于计算百分位）- 默认值，真实数据会覆盖
 PE_HISTORY = {
-    'sh000300': {'current': 14.18, 'min': 10, 'max': 18, 'avg': 13.5},
-    'sh000016': {'current': 11.5, 'min': 8, 'max': 15, 'avg': 11},
-    'sh000905': {'current': 22.5, 'min': 15, 'max': 35, 'avg': 25},
-    'sh000688': {'current': 65, 'min': 35, 'max': 85, 'avg': 60},
-    'sz399006': {'current': 28, 'min': 25, 'max': 60, 'avg': 42},
-    'sh000852': {'current': 32, 'min': 20, 'max': 50, 'avg': 35},
-    'sh000001': {'current': 13.5, 'min': 10, 'max': 20, 'avg': 14},
-    'sz399001': {'current': 25, 'min': 18, 'max': 40, 'avg': 25},
-    # 海外指数PE范围（模拟）
-    'IXIC': {'current': 35, 'min': 20, 'max': 50, 'avg': 30},
-    'SPX': {'current': 22, 'min': 15, 'max': 30, 'avg': 20},
-    'FTSE': {'current': 15, 'min': 10, 'max': 22, 'avg': 14},
-    'DAX': {'current': 15, 'min': 10, 'max': 25, 'avg': 14},
-    'N225': {'current': 18, 'min': 12, 'max': 30, 'avg': 18},
-    'HSI': {'current': 12, 'min': 8, 'max': 18, 'avg': 12}
+    'sh000300': {'min': 8, 'max': 50, 'avg': 18},    # 沪深300
+    'sh000016': {'min': 6, 'max': 30, 'avg': 12},    # 上证50
+    'sh000905': {'min': 15, 'max': 90, 'avg': 35},   # 中证500
+    'sh000688': {'min': 30, 'max': 120, 'avg': 60},  # 科创50
+    'sz399006': {'min': 25, 'max': 130, 'avg': 50},  # 创业板指
+    'sh000852': {'min': 20, 'max': 100, 'avg': 40},  # 中证1000
+    'sh000001': {'min': 8, 'max': 40, 'avg': 15},    # 上证指数
+    'sz399001': {'min': 15, 'max': 70, 'avg': 25},   # 深证成指
+    # 海外指数（暂用默认值）
+    'IXIC': {'min': 15, 'max': 100, 'avg': 30},
+    'SPX': {'min': 10, 'max': 50, 'avg': 20},
+    'FTSE': {'min': 8, 'max': 35, 'avg': 14},
+    'DAX': {'min': 8, 'max': 45, 'avg': 14},
+    'N225': {'min': 10, 'max': 50, 'avg': 18},
+    'HSI': {'min': 7, 'max': 30, 'avg': 12}
 }
+
+# 实时PE数据缓存（从AKShare获取）
+REAL_TIME_PE = {
+    'sh000300': {'current': None, 'date': None, 'source': None},
+    'sh000016': {'current': None, 'date': None, 'source': None},
+    'sh000905': {'current': None, 'date': None, 'source': None},
+    'sh000688': {'current': None, 'date': None, 'source': None},
+    'sz399006': {'current': None, 'date': None, 'source': None},
+    'sh000852': {'current': None, 'date': None, 'source': None},
+}
+
+# PE历史数据缓存（用于计算百分位）
+PE_HISTORY_DATA = {}  # {code: DataFrame with 'date', 'pe_ttm' columns}
+
+
+def refresh_pe_data():
+    """
+    刷新所有指数的实时PE数据
+    使用AKShare获取真实数据
+    """
+    from history_data import get_index_pe_from_akshare, get_index_pe_from_csindex, get_all_index_pe
+    
+    global REAL_TIME_PE, PE_HISTORY_DATA
+    
+    print("📊 正在刷新PE数据...")
+    
+    # 获取所有指数PE
+    all_pe = get_all_index_pe()
+    
+    if all_pe:
+        for code, data in all_pe.items():
+            if data.get('pe_ttm'):
+                REAL_TIME_PE[code] = {
+                    'current': data['pe_ttm'],
+                    'date': data.get('date', ''),
+                    'source': 'AKShare'
+                }
+                print(f"  ✅ {code}: PE={data['pe_ttm']}")
+        
+        # 保存到缓存
+        cache['pe_data'] = {
+            'data': dict(REAL_TIME_PE),
+            'time': time.time()
+        }
+    else:
+        print("  ⚠️ AKShare获取失败，尝试备用方法...")
+    
+    return REAL_TIME_PE
+
+
+def get_real_time_pe(code):
+    """
+    获取单个指数的实时PE
+    优先返回真实数据，否则返回缓存或默认值
+    """
+    global REAL_TIME_PE, PE_HISTORY
+    
+    # 检查缓存是否需要刷新（每5分钟刷新一次）
+    pe_cache = cache.get('pe_data', {})
+    if not pe_cache or (time.time() - pe_cache.get('time', 0)) > 300:
+        refresh_pe_data()
+    
+    # 返回实时PE
+    real_pe = REAL_TIME_PE.get(code, {}).get('current')
+    if real_pe:
+        return real_pe
+    
+    # 返回默认值中的估算值
+    return PE_HISTORY.get(code, {}).get('avg', 20)
 
 # 缓存
 cache = {
@@ -231,6 +300,10 @@ def fetch_sina_quotes():
                     else:
                         change = price * change_pct / 100
                     
+                    # 获取真实PE数据（从AKShare）
+                    real_pe = get_real_time_pe(index_code)
+                    pe_info = PE_HISTORY.get(index_code, {})
+                    
                     item = {
                         'code': index_code,
                         'name': info.get('name', parts[1]),
@@ -246,14 +319,18 @@ def fetch_sina_quotes():
                         'source': 'qq'
                     }
                     
-                    item['pe'] = pe_info.get('current', 20)
+                    # 使用真实PE数据
+                    item['pe'] = real_pe if real_pe else (pe_info.get('avg', 20))
                     item['peMin'] = pe_info.get('min', 10)
                     item['peMax'] = pe_info.get('max', 30)
                     
+                    # 计算百分位
                     if pe_info:
-                        range_val = pe_info['max'] - pe_info['min']
-                        position = pe_info['current'] - pe_info['min']
-                        item['pePercentile'] = round((position / range_val) * 100) if range_val > 0 else 50
+                        min_pe = pe_info.get('min', 10) * 0.8
+                        max_pe = pe_info.get('max', 30) * 1.2
+                        range_val = max_pe - min_pe
+                        position = real_pe - min_pe if real_pe else (pe_info.get('avg', 20) - min_pe)
+                        item['pePercentile'] = max(0, min(100, round((position / range_val) * 100))) if range_val > 0 else 50
                     else:
                         item['pePercentile'] = 50
                     
@@ -334,14 +411,25 @@ def fetch_sina_quotes():
 
 
 def calculate_pe_percentile(code):
-    """计算PE百分位"""
+    """计算PE百分位 - 使用真实PE数据"""
     pe_info = PE_HISTORY.get(code, {})
     if not pe_info:
         return 50
     
-    range_val = pe_info['max'] - pe_info['min']
-    position = pe_info['current'] - pe_info['min']
-    return round((position / range_val) * 100) if range_val > 0 else 50
+    # 获取当前PE（优先真实数据，否则用默认值）
+    current_pe = get_real_time_pe(code)
+    
+    # 扩大范围以适应历史极值
+    min_pe = pe_info['min'] * 0.8  # 留一定余量
+    max_pe = pe_info['max'] * 1.2
+    
+    # 计算百分位（简化算法：相对于历史范围的当前位置）
+    range_val = max_pe - min_pe
+    position = current_pe - min_pe
+    percentile = round((position / range_val) * 100) if range_val > 0 else 50
+    
+    # 限制在0-100之间
+    return max(0, min(100, percentile))
 
 
 def calculate_score(item):
