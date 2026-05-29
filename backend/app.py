@@ -257,8 +257,9 @@ def fetch_sina_quotes():
                 except Exception as e:
                     logger.warning(f"解析腾讯数据失败: {e}")
                     continue
-            except Exception as e:
-                logger.error(f"腾讯财经请求失败: {e}")
+
+        except Exception as e:
+            logger.error(f"腾讯财经请求失败: {e}")
     
     # 新浪国际数据源（富时100、日经225）
     sina_int_codes = [(k, v['sina_code']) for k, v in global_data_sources.items() 
@@ -312,9 +313,9 @@ def fetch_sina_quotes():
                     
                     data.append(item)
                     logger.debug(f"新浪获取 {item['name']}: {item['price']} ({change_pct}%)")
-                    
-            except Exception as e:
-                logger.warning(f"新浪国际获取 {index_code} 失败: {e}")
+            
+        except Exception as e:
+            logger.warning(f"新浪国际获取 {index_code} 失败: {e}")
     
     result = {
         'success': True,
