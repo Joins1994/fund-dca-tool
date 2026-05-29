@@ -548,8 +548,8 @@ def get_history(code):
             'error': f'指数 {code} 不存在'
         })
     
-    # 获取完整历史数据
-    df = get_index_history(code, use_mock=True)  # 使用模拟数据确保稳定性
+    # 获取完整历史数据（优先使用真实数据）
+    df = get_index_history(code, use_mock=False)
     
     if df is None or len(df) == 0:
         return jsonify({
@@ -590,7 +590,7 @@ def get_history_summary():
     summary = []
     
     for code in INDEX_LIST.keys():
-        df = get_index_history(code, use_mock=True)
+        df = get_index_history(code, use_mock=False)
         if df is not None and len(df) > 0:
             df = calculate_pe_from_price(df, code)
             
@@ -997,10 +997,12 @@ def list_backups():
 
 if __name__ == '__main__':
     print("=" * 50)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    
     print("📈 指数基金定投助手 - 后端API服务")
     print("=" * 50)
-    print("🌐 访问地址: http://localhost:5000")
-    print("📚 API文档: http://localhost:5000/")
+    print(f"🌐 访问地址: http://localhost:{port}")
     print("=" * 50)
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=debug)
