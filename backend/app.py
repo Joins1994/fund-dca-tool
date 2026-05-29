@@ -211,18 +211,24 @@ def fetch_sina_quotes():
                     # 添加PE和分位数据（使用真实PE数据）
                     real_pe = get_real_time_pe(code)
                     pe_info = PE_HISTORY.get(code, {})
-                    item['pe'] = real_pe if real_pe else pe_info.get('avg', 20)
-                    item['peMin'] = pe_info.get('min', 10)
-                    item['peMax'] = pe_info.get('max', 30)
                     
-                    if pe_info:
+                    # 有真实PE数据时显示，否则显示"--"
+                    if real_pe and real_pe != pe_info.get('avg', 20):
+                        item['pe'] = real_pe
+                        item['peMin'] = pe_info.get('min', 10)
+                        item['peMax'] = pe_info.get('max', 30)
+                        
                         min_pe = pe_info.get('min', 10) * 0.8
                         max_pe = pe_info.get('max', 30) * 1.2
                         range_val = max_pe - min_pe
-                        position = real_pe - min_pe if real_pe else (pe_info.get('avg', 20) - min_pe)
+                        position = real_pe - min_pe
                         item['pePercentile'] = max(0, min(100, round((position / range_val) * 100))) if range_val > 0 else 50
                     else:
-                        item['pePercentile'] = 50
+                        # 无真实数据时显示"--"
+                        item['pe'] = '--'
+                        item['peMin'] = '--'
+                        item['peMax'] = '--'
+                        item['pePercentile'] = '--'
                     
                     data.append(item)
         except Exception as e:
@@ -303,10 +309,6 @@ def fetch_sina_quotes():
                     else:
                         change = price * change_pct / 100
                     
-                    # 获取真实PE数据（从AKShare）
-                    real_pe = get_real_time_pe(index_code)
-                    pe_info = PE_HISTORY.get(index_code, {})
-                    
                     item = {
                         'code': index_code,
                         'name': info.get('name', parts[1]),
@@ -322,20 +324,11 @@ def fetch_sina_quotes():
                         'source': 'qq'
                     }
                     
-                    # 使用真实PE数据
-                    item['pe'] = real_pe if real_pe else (pe_info.get('avg', 20))
-                    item['peMin'] = pe_info.get('min', 10)
-                    item['peMax'] = pe_info.get('max', 30)
-                    
-                    # 计算百分位
-                    if pe_info:
-                        min_pe = pe_info.get('min', 10) * 0.8
-                        max_pe = pe_info.get('max', 30) * 1.2
-                        range_val = max_pe - min_pe
-                        position = real_pe - min_pe if real_pe else (pe_info.get('avg', 20) - min_pe)
-                        item['pePercentile'] = max(0, min(100, round((position / range_val) * 100))) if range_val > 0 else 50
-                    else:
-                        item['pePercentile'] = 50
+                    # 海外指数暂无真实PE数据源，显示"--"
+                    item['pe'] = '--'
+                    item['peMin'] = '--'
+                    item['peMax'] = '--'
+                    item['pePercentile'] = '--'
                     
                     data.append(item)
                     print(f"  ✅ 腾讯获取 {item['name']}: {item['price']} ({change_pct}%)")
@@ -385,16 +378,11 @@ def fetch_sina_quotes():
                         'source': 'sina_int'
                     }
                     
-                    item['pe'] = pe_info.get('current', 20)
-                    item['peMin'] = pe_info.get('min', 10)
-                    item['peMax'] = pe_info.get('max', 30)
-                    
-                    if pe_info:
-                        range_val = pe_info['max'] - pe_info['min']
-                        position = pe_info['current'] - pe_info['min']
-                        item['pePercentile'] = round((position / range_val) * 100) if range_val > 0 else 50
-                    else:
-                        item['pePercentile'] = 50
+                    # 海外指数暂无真实PE数据源，显示"--"
+                    item['pe'] = '--'
+                    item['peMin'] = '--'
+                    item['peMax'] = '--'
+                    item['pePercentile'] = '--'
                     
                     data.append(item)
                     print(f"  ✅ 新浪获取 {item['name']}: {item['price']} ({change_pct}%)")
